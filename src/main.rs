@@ -1,0 +1,235 @@
+use actix_cors::Cors;
+use actix_files::Files;
+use actix_multipart::form::MultipartFormConfig;
+use actix_web::{App, HttpServer, http::header, web};
+use tracing_actix_web::TracingLogger;
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
+
+mod common;
+mod control;
+mod db;
+mod middleware;
+mod routes;
+mod utils;
+
+use crate::common::SERVER_PROT;
+use crate::control::app_data::AppData;
+use crate::middleware::{CustomRootSpanBuilder, IpExtractor};
+use crate::routes::*;
+// use crate::utils::jobs::run_jobs;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let port: u16 = SERVER_PROT;
+    println!("██████████ PORT: {} ██████████", port);
+    std::fs::create_dir_all("static/images")?;
+
+    // 定时任务执行。
+    // run_jobs();
+
+    HttpServer::new(move || {
+        let mut app = App::new()
+            .app_data(web::Data::new(AppData::new()))
+            .app_data(
+                MultipartFormConfig::default()
+                    .total_limit(200 * 1024 * 1024) // 200 MB
+                    .memory_limit(100 * 1024 * 1024), // 100 MB
+            )
+            .wrap(
+                Cors::default()
+                    .allowed_origin("http://localhost:3060")
+                    .allowed_origin("http://localhost:9000")
+                    .allowed_origin("https://xxx.com")
+                    .allowed_methods(vec!["GET", "POST", "PUT"])
+                    .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+                    .allowed_header(header::CONTENT_TYPE)
+                    .supports_credentials()
+                    .max_age(3600),
+            )
+            .wrap(IpExtractor::for_nginx()) // 要在log之前
+            .wrap(TracingLogger::<CustomRootSpanBuilder>::new())
+            // .route("/ws", web::get().to(echo)) // websocket
+            .service(Files::new("/static/images", "static/images/").show_files_listing())
+            .service(test_mysql)
+            .service(manage_common_base_info)
+            .service(manage_common_banner_add)
+            .service(manage_common_banner_list)
+            .service(manage_common_banner_del)
+            .service(manage_common_banner_status)
+            .service(manage_common_geocode_regeo)
+            .service(manage_system_menu_list)
+            .service(manage_system_paths_list)
+            .service(manage_system_sub_paths_list)
+            .service(manage_system_paths_add)
+            .service(manage_system_paths_delete)
+            .service(manage_system_paths_all)
+            .service(manage_system_role_list)
+            .service(manage_system_role_add)
+            .service(manage_system_role_info)
+            .service(manage_system_role_update)
+            .service(manage_system_role_del)
+            .service(manage_system_role_user)
+            .service(manage_system_module_switch_list)
+            .service(manage_system_module_switch_change)
+            .service(manage_user_search)
+            .service(manage_user_update_authority)
+            .service(manage_user_update_user_role)
+            .service(manage_user_all_users)
+            .service(manage_user_feedback_list)
+            .service(manage_user_search_phone)
+            .service(manage_user_credential)
+            .service(manage_user_credential_status)
+            .service(manage_user_roles_list)
+            .service(manage_mall_cat_list)
+            .service(manage_mall_cat_add)
+            .service(manage_mall_cat_del)
+            .service(manage_mall_attr_product_list)
+            .service(manage_mall_attr_product_add)
+            .service(manage_mall_attr_product_del)
+            .service(manage_mall_attr_unit_list)
+            .service(manage_mall_attr_unit_add)
+            .service(manage_mall_attr_unit_del)
+            .service(manage_mall_product_add)
+            .service(manage_mall_product_list)
+            .service(manage_mall_product_search)
+            .service(manage_mall_product_del)
+            .service(manage_mall_product_status)
+            .service(manage_mall_product_unit_add)
+            .service(manage_mall_product_unit_attr)
+            .service(manage_mall_product_unit_list)
+            .service(manage_mall_product_unit_search)
+            .service(manage_mall_product_unit_del)
+            .service(manage_mall_product_unit_status)
+            .service(manage_mall_store_search)
+            .service(manage_mall_store_list)
+            .service(manage_mall_store_add)
+            .service(manage_mall_store_del)
+            .service(manage_mall_store_status)
+            .service(manage_mall_store_employee_add)
+            .service(manage_mall_store_employee_list)
+            .service(manage_mall_store_employee_status)
+            .service(manage_mall_store_employee_del)
+            .service(manage_mall_order_list)
+            .service(manage_mall_order_item_list)
+            .service(manage_mall_order_product_info)
+            .service(manage_mall_order_do_delivery_start)
+            .service(manage_mall_coupon_add)
+            .service(manage_mall_coupon_list)
+            .service(manage_mall_coupon_del)
+            .service(manage_mall_coupon_status)
+            .service(manage_mall_coupon_condition_add)
+            .service(manage_mall_coupon_condition_list)
+            .service(manage_mall_coupon_condition_search)
+            .service(manage_mall_brand_add)
+            .service(manage_mall_brand_list)
+            .service(manage_mall_brand_search)
+            .service(manage_mall_brand_del)
+            .service(manage_mall_brand_status)
+            .service(manage_mall_product_file_add)
+            .service(manage_mall_product_file_list)
+            .service(manage_mall_product_file_del)
+            .service(manage_mall_product_file_status)
+            .service(manage_que_form_ans_list)
+            .service(manage_que_form_que_list)
+            .service(manage_article_article_cat_add)
+            .service(manage_article_article_cat_status)
+            .service(manage_article_article_cat_del)
+            .service(manage_article_article_cat_list)
+            .service(manage_article_article_add)
+            .service(manage_article_article_list)
+            .service(manage_article_article_status)
+            .service(manage_article_article_del)
+            .service(manage_sales_main_sale_sub_list)
+            .service(manage_sales_sale_sub_list)
+            .service(manage_sales_main_sale_status)
+            .service(manage_sales_sale_user_status)
+            .service(manage_sales_main_sale_del)
+            .service(manage_sales_sale_user_del)
+            .service(manage_sales_records_list)
+            // .service(upload_image)
+            // .service(upload_avatar)
+            .service(upload_file)
+            .service(static_file_path)
+            .service(login_manage)
+            .service(login_silent_wechat_mini)
+            .service(login_silent_wechat_gzh)
+            .service(login_wechat_mini_info)
+            .service(login_wechat_phone_mini)
+            .service(login_wechat_gzh_info)
+            .service(login_register_manage)
+            .service(login_sms_bind_phone)
+            .service(common_province_list)
+            .service(common_banner_list)
+            .service(common_base_info)
+            .service(common_sms_code)
+            .service(common_wx_message_verify)
+            .service(common_wx_js_sdk_sign)
+            .service(common_module_switch_list)
+            .service(user_feedback)
+            .service(user_collect_add)
+            .service(user_collect_list)
+            .service(user_credential_add)
+            .service(user_credential_detail)
+            .service(user_addr_add)
+            .service(user_addr_list)
+            .service(user_addr_detail)
+            .service(user_addr_del)
+            .service(user_coupon_list)
+            .service(user_pocket_money)
+            .service(user_pocket_tran)
+            .service(pay_notify)
+            .service(mall_order_add_shop_cart)
+            .service(mall_order_add_buy_now)
+            .service(mall_order_make_prepare)
+            .service(mall_order_make_pay)
+            .service(mall_order_list)
+            .service(mall_order_detail)
+            .service(mall_order_modify_status)
+            .service(mall_coupon_receive)
+            .service(mall_coupon_list)
+            .service(mall_product_list)
+            .service(mall_product_unit_list)
+            .service(mall_product_user_publish)
+            .service(mall_product_detail)
+            .service(mall_product_file)
+            .service(mall_product_file_send_email)
+            .service(mall_product_group_all)
+            .service(mall_store_list)
+            .service(mall_store_detail)
+            .service(mall_brand_products)
+            .service(mall_brand_products_all)
+            .service(mall_brand_options)
+            .service(mall_cat_products_all)
+            .service(mall_cat_list)
+            .service(mall_cat_tertiary_of)
+            .service(mall_write_off_info)
+            .service(mall_write_off_do)
+            .service(que_form_detail)
+            .service(que_form_submit)
+            .service(article_category_list)
+            .service(article_content_list)
+            .service(article_content_detail)
+            .service(article_stat_praise)
+            .service(sales_invite_sale_code)
+            .service(sales_invite_sale_bind)
+            .service(sales_invite_sale_del)
+            .service(sales_invite_user_code)
+            .service(sales_invite_user_bind)
+            .service(sales_invite_user_del)
+            .service(sales_list_sale)
+            .service(sales_list_user);
+        if cfg!(feature = "doc") {
+            // ** ********* 测试版功能 ********* **/
+            app = app
+                .service(test_jwt_token)
+                .service(pay_make_wx_test)
+                .service(Scalar::with_url("/doc/mini", ApiDocMini::openapi()))
+                .service(Scalar::with_url("/doc/manage", ApiDocManage::openapi()));
+        }
+        app
+    })
+    .bind(("127.0.0.1", port))?
+    .run()
+    .await
+}

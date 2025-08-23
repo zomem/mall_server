@@ -1,0 +1,7 @@
+/target
+logs
+static
+.DS_Store
+.img_comp_temp
+sql
+secret
