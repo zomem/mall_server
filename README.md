@@ -1,4 +1,4 @@
-# Mall Server - 商城后端服务
+# Rust + Actix Web - 商城后端服务
 
 基于 Rust + Actix Web 构建的高性能商城后端服务，提供电商解决方案。
 
