@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 use crate::common::types::QuestionFormType;
 use crate::db::{my_run_vec, mysql_conn};
 use crate::middleware::AuthMana;
-use crate::routes::Res;
+use crate::routes::{PageData, Res};
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct QueFormItemRes {

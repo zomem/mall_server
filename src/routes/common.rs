@@ -13,7 +13,7 @@ use crate::control::sms::sms_send_code;
 use crate::control::wx_info::{get_wx_mini_access_token, sign_wx_gzh_jssdk};
 use crate::db::{my_run_drop, my_run_vec, mysql_conn};
 use crate::middleware::AuthUser;
-use crate::routes::{BaseInfo, BaseStrInfo, PdCat, Res};
+use crate::routes::{BaseInfo, BaseStrInfo, PdCat, Res, WxJsSdkSign};
 use crate::utils::files::get_file_urls;
 
 #[derive(Serialize, Clone, Debug, ToSchema)]

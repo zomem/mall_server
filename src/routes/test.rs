@@ -1,10 +1,10 @@
-use actix_web::{HttpRequest, Responder, Result, error, get, web};
+use actix_web::{HttpRequest, Responder, Result, get, web};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
     common::{JWT_MANAGE_EXPIRES_SEC, LocalKeySeed},
-    middleware::{AuthUser, get_client_ip},
+    middleware::AuthUser,
     utils::jwt::get_token,
 };
 

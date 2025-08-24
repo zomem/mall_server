@@ -3,10 +3,9 @@ use mysql_quick::{MysqlQuickCount, mycount, myfind, myset, myupdate};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::PageData;
 use crate::common::BRAND_START_CODE;
 use crate::common::types::OssBucket;
-use crate::routes::Res;
+use crate::routes::{PageData, Res};
 use crate::utils::files::{get_file_url, get_path_from_url};
 use crate::{
     db::{my_run_drop, my_run_vec, mysql_conn},

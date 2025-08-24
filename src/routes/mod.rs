@@ -1,6 +1,9 @@
-use crate::common::types::{ProductLayout, QuestionFormType};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
+
+use crate::common::types::{DeliveryType, PayType, ProductLayout, QuestionFormType, TranType};
+// use crate::routes::BaseData;
+use crate::routes::utils_set::mall_set::{PrePareRes, UserBuy};
 
 mod utils_set;
 
@@ -52,9 +55,7 @@ pub use mall::*;
 mod sales;
 pub use sales::*;
 
-use crate::common::types::*;
 use crate::control::wx_info::WxJsSdkSign;
-use crate::routes::utils_set::mall_set::{PrePareRes, UserBuy};
 
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct Res<T> {
@@ -89,7 +90,7 @@ impl<T> Res<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct PageData<T> {
     list: T,
     total: u64,
@@ -112,9 +113,10 @@ pub struct BaseStrInfo {
 }
 #[derive(Serialize, Deserialize, Clone, Debug, ToSchema)]
 pub struct BaseInfo {
-    label: String,
-    value: u32,
-    children: Vec<BaseInfo>,
+    pub label: String,
+    pub value: u32,
+    #[schema(no_recursion)]
+    pub children: Vec<BaseInfo>,
 }
 
 #[derive(OpenApi)]

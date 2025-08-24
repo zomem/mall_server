@@ -1,5 +1,5 @@
 use actix_web::{Error, error};
-use aliyun_oss_rust_sdk::{error::OssError, oss::OSS, request::RequestBuilder, url::UrlApi};
+use aliyun_oss_rust_sdk::{oss::OSS, request::RequestBuilder, url::UrlApi};
 use chrono::{Duration, Local};
 use redis::Commands;
 

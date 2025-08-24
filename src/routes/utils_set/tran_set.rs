@@ -22,7 +22,7 @@ pub fn add_tran_record(
         &tran_type.to_string(),
         &pay_type.to_string(),
         time,
-    );
+    )?;
     // 新增记录
     let info_str = info.map(|v| serde_json::to_string(v).unwrap_or_default());
     my_run_tran_drop(

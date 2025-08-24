@@ -35,7 +35,7 @@ pub fn pocket_money_add(
     }
     let user_pocket = get_user_pocket_money(tran, uid)?;
     let money_new = user_pocket.amount + add_amount;
-    let hash = hash_user_pocket_money(uid, money_new);
+    let hash = hash_user_pocket_money(uid, money_new)?;
     my_run_tran_drop(
         tran,
         myupdate!("usr_pocket_money", {"uid": uid}, {
@@ -75,7 +75,7 @@ pub fn pocket_money_sub(
         return Err(error::ErrorForbidden("用户零钱不足"));
     }
     let money_new = user_pocket.amount - sub_amount;
-    let hash = hash_user_pocket_money(uid, money_new);
+    let hash = hash_user_pocket_money(uid, money_new)?;
     my_run_tran_drop(
         tran,
         myupdate!("usr_pocket_money", {"uid": uid}, {
@@ -137,7 +137,7 @@ pub fn init_user_pocket_money(conn: &mut PooledConn, uid: u64) -> Result<(), Err
         // 已经有了，就不再新增
         return Ok(());
     }
-    let hash = hash_user_pocket_money(uid, 0.);
+    let hash = hash_user_pocket_money(uid, 0.)?;
     // 新增
     my_run_drop(
         conn,

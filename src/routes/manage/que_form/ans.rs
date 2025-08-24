@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 use crate::common::types::QuestionFormType;
 use crate::db::{my_run_vec, mysql_conn};
 use crate::middleware::AuthMana;
-use crate::routes::Res;
+use crate::routes::{BrandInfo, PageData, Res};
 use crate::utils::files::{get_file_url, get_file_urls};
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]

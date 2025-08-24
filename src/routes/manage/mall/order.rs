@@ -1,4 +1,4 @@
-use actix_web::{Responder, Result, error, get, post, web};
+use actix_web::{Responder, Result, get, post, web};
 use mysql_quick::{MysqlQuickCount, TxOpts, mycount, myfind, myget, mysetmany};
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,6 @@ use crate::control::app_data::{AppData, SlownWorker};
 use crate::routes::Res;
 use crate::routes::utils_set::mall_set::{OrderChange, OrderChangeItems, upd_order_item_status};
 use crate::utils::files::get_file_url;
-use crate::utils::utils::log_err;
 use crate::{PageData, UnitAttrInfo};
 use crate::{
     db::{my_run_tran_drop, my_run_tran_vec, my_run_vec, mysql_conn},

@@ -124,7 +124,8 @@ src/
 4. 导入数据库结构 (`sql/mall_scaffold.sql`)
 
 ### 数据库配置
-在 `src/common/secret/` 目录下配置数据库连接信息。
+- 在 `src/common/secret/` 目录下配置数据库连接信息。
+- 默认超级管理员id为1，账号为：admin  123456
 
 ## 快速开始
 

@@ -13,6 +13,7 @@ pub struct ProductCatItem {
     id: u32,
     icon: Option<String>,
     name: String,
+    #[schema(no_recursion)]
     children: Vec<ProductCatItem>,
 }
 /// 【产品分类】分类列表

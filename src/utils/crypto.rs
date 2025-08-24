@@ -119,7 +119,6 @@ pub fn aes_256_decrypt(dedata: &str, seed: LocalKeySeed) -> anyhow::Result<Strin
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::LOCAL_AES_256_KEY;
     use crate::common::LocalKeySeed;
     #[test]
     fn test_aes() {
@@ -137,14 +136,9 @@ mod test {
         // let es = aes_256_decrypt(&data, LocalKeySeed::Logs);
         // println!("解密数据：{}", es);
 
-        let data = "3g5NxKttmPEbtHm7BEGg2UpVBOvW9hsIKP63ts4i502_r2jS46nNQDsT-dLR-_ndz6N1UvSH4TeXTsKVCCdcDPG_npbJrsqNs2ReaGsTsVIbtCP5RXS3fJi88kv95sC5cSu_wt3gfW3ipoXZrKoByITZvuJhvgQETmzKxfQGmAjWMovMx02yutak1V8O9dwk8dYnQj4Q5RjJ5_1eKee35YZMOuG-gngHF-3xC6cRnBh9733DF8F8iKIijQmHPnGpGBsmbK75U79dfCoGiMonJSDB8oyYvxpDYoons5z4KBh7DrXaRqucvhF_zplWEYGVXsIiQ38_uCvWLmdGlcgKpw6yaKFWRor5EyrAw48e5S6saiGwiUC8VB6zHnqfJqrLLREEoQCmiQnnI2q6A9NqPnYtH4FmX_1mYY3II0tNMcGzNZ9riAcU1R_TjB-UnpurY65xYNbYVs0JgYDnAMeJBFdx8D6iwux5gpXDlkIWT7X0pRbWsYmEslREvn6lTPN3";
-        let dec_data = base64_decode(data).unwrap();
-        let my_key: &[u8; 32] = LOCAL_AES_256_KEY.as_bytes().try_into().unwrap(); // key is 16 bytes, i.e. 128-bit
-        let iv = &my_key[0..16];
-        let cipher = Cipher::new_256(my_key);
-        // Decryption
-        let decrypted = cipher.cbc_decrypt(iv, &dec_data[..]);
-        let es = String::from_utf8(decrypted.to_owned()).unwrap();
-        println!("解密数据：{}", es);
+        let data = "kI0SroRbcml9zhANYtRB7i2q-8VKl2Emn4jM_B0w95NtCUUv6i9KQLmhzQsfvErsLyFF7uhFdAuSYG01PFdUA5K5oXNg3fboiQBOUDG5IcPCMRjzu059003ClfXiP62UW0f-3VMaKuxc38AN4-wO6ELk8kQdm8_IdQVIWc6Dv9DMouRspnisscxs4pqCbS7Sjc99rESw_ODeKmF6NBbb0qvZs3nEvBhO1_CVMSbk6KjXsod3jiAGNE9pvxY1UeJXPMoyXtHV3PiMwdvbFxfx8WXsm-buaUL7-nk_W02a7k4yb8QExbjnCT9fcYD_57xZX9OgPkSZICCQ4z4qPg-WFStlI0cERM3twkt6DpDqS6VMAWDeIq7P5-n-luL9xlG91uueDEU7z5l_l8yoefesrLT0oyaq_JE0WZLxhIB5NFuClOGDM1dBWasdfH-EN025";
+        let info = aes_256_decrypt(data, LocalKeySeed::Logs).unwrap();
+
+        println!("解密数据：{}", info);
     }
 }
