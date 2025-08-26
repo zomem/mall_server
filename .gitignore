@@ -3,3 +3,5 @@ logs
 static
 .DS_Store
 .img_comp_temp
+
+# secret

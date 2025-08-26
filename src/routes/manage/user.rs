@@ -1,6 +1,7 @@
 use actix_web::{Responder, Result, get, put, web};
 use mysql_quick::{MysqlQuickCount, Queryable, TxOpts, mycount, myfind, myset, myupdate};
 use serde::{Deserialize, Serialize};
+use serde_aux::prelude::deserialize_number_from_string;
 
 use crate::PageData;
 use crate::common::types::Role;
@@ -10,6 +11,7 @@ use crate::routes::utils_set::sales_set::{
     main_sale_add, sale_add, sale_and_main_del, user_and_sale_del,
 };
 use crate::utils::files::{get_file_url, get_file_urls};
+use crate::utils::filter::deserialize_path_to_url;
 use crate::utils::utils::hide_phone_number;
 use crate::{
     db::{my_run_drop, my_run_vec, mysql_conn},
@@ -639,4 +641,152 @@ pub async fn manage_user_roles_list(
         count[0].mysql_quick_count,
         list,
     ))))
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct WithdrawRequestItem {
+    id: u32,
+    /// 用户ID
+    uid: u64,
+    /// 用户头像
+    avatar_url: String,
+    /// 用户昵称
+    nickname: Option<String>,
+    /// 提现申请金额
+    req_amount: f64,
+    /// 审核状态 (0未通过，1审核中，2已上线，3已下线)
+    status: u8,
+    /// 申请时间
+    created_at: String,
+    /// 更新时间
+    updated_at: String,
+}
+
+/// 提现申请列表
+#[get("/manage/user/withdraw_req/list/{status}/{page}/{limit}")]
+pub async fn manage_user_withdraw_req_list(
+    _mana: AuthMana,
+    query: web::Path<(String, String, String)>,
+) -> Result<impl Responder> {
+    let mut conn = mysql_conn()?;
+    let (status, page, limit) = query.to_owned();
+    let status: i8 = status.to_owned().parse().unwrap();
+    let page: u32 = page.to_owned().parse().unwrap();
+    let limit: u32 = limit.to_owned().parse().unwrap();
+
+    let count: Vec<MysqlQuickCount> = my_run_vec(
+        &mut conn,
+        mycount!("usr_withdrawal_request", {
+            p0: ["is_del", "=", 0],
+            p1: ["status", "=", status],
+            r: if status == -1 { "p0" } else  {"p0 && p1"},
+        }),
+    )?;
+
+    #[derive(Deserialize)]
+    struct WithdrawRequestGet {
+        id: u32,
+        uid: u64,
+        #[serde(deserialize_with = "deserialize_path_to_url")]
+        avatar_url: String,
+        nickname: Option<String>,
+        #[serde(deserialize_with = "deserialize_number_from_string")]
+        req_amount: f64,
+        status: u8,
+        created_at: String,
+        updated_at: String,
+    }
+
+    let list: Vec<WithdrawRequestGet> = my_run_vec(
+        &mut conn,
+        myfind!("usr_withdrawal_request", {
+            j0: ["uid", "inner", "usr_silent.id"],
+            p0: ["is_del", "=", 0],
+            p1: ["usr_withdrawal_request.status", "=", status],
+            r: if status == -1 { "p0" } else  {"p0 && p1"},
+            page: page,
+            limit: limit,
+            order_by: "-created_at",
+            select: "
+                usr_withdrawal_request.id,uid,usr_silent.avatar_url,usr_silent.nickname,
+                req_amount,usr_withdrawal_request.status,usr_withdrawal_request.created_at,
+                usr_withdrawal_request.updated_at",
+        }),
+    )?;
+
+    let list: Vec<WithdrawRequestItem> = list
+        .into_iter()
+        .map(|x| WithdrawRequestItem {
+            id: x.id,
+            uid: x.uid,
+            avatar_url: x.avatar_url,
+            nickname: x.nickname,
+            req_amount: x.req_amount,
+            status: x.status,
+            created_at: x.created_at,
+            updated_at: x.updated_at,
+        })
+        .collect();
+
+    Ok(web::Json(Res::success(PageData::new(
+        count[0].mysql_quick_count,
+        list,
+    ))))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WithdrawRequestStatusChange {
+    id: u32,
+    status: u8,
+}
+
+/// 提现申请状态更新 (通过/拒绝)
+#[put("/manage/user/withdraw_req/status")]
+pub async fn manage_user_withdraw_req_status(
+    mana: AuthMana,
+    params: web::Json<WithdrawRequestStatusChange>,
+) -> Result<impl Responder> {
+    let op_uid = mana.id;
+
+    // 验证状态值，只能为0，1，2
+    if params.status != 0 && params.status != 1 && params.status != 2 {
+        return Ok(web::Json(Res::fail("状态值只能为0、1、2")));
+    }
+
+    let mut conn = mysql_conn()?;
+
+    my_run_drop(
+        &mut conn,
+        myupdate!("usr_withdrawal_request", params.id, {
+            "status": params.status,
+            "op_uid": op_uid,
+        }),
+    )?;
+
+    Ok(web::Json(Res::success("状态更新成功")))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WithdrawRequestDel {
+    id: u32,
+}
+
+/// 删除提现申请
+#[put("/manage/user/withdraw_req/del")]
+pub async fn manage_user_withdraw_req_del(
+    mana: AuthMana,
+    params: web::Json<WithdrawRequestDel>,
+) -> Result<impl Responder> {
+    let op_uid = mana.id;
+    let mut conn = mysql_conn()?;
+
+    my_run_drop(
+        &mut conn,
+        myupdate!("usr_withdrawal_request", params.id, {
+            "is_del": 1,
+            "op_uid": op_uid,
+        }),
+    )?;
+
+    Ok(web::Json(Res::success("删除成功")))
 }
