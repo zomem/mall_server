@@ -13,21 +13,25 @@ pub const REDIS_URL: &str = "redis://:aaa@127.0.0.1/";
 /// 超级管理员 的 uid
 pub const SUPER_SYSTEM_USER_ID: u64 = 1;
 
-/// jwt
-pub const JWT_TOKEN_SECRET: &str = "Tvy5fzF8PhX0r0ZWB9RxDK2OwIkpBrlI";
+/// jwt 32位
+pub const JWT_TOKEN_SECRET: &str = "Od8BiScWVhk";
 
-/// /utils/crypto/ aes key
-pub const LOCAL_AES_256_KEY: &str = "l8ljjHKOUPJGvbqpbejHS6NTCmhPTj3T";
+/// /utils/crypto/ aes key 32位
+pub const LOCAL_AES_256_KEY: &str = "ld8BiScWVhk";
 #[allow(unused)]
 pub enum LocalKeySeed {
     /// 测试
     Test = 1,
     /// 日志
     Logs = 1752,
+    /// 用户uid和openid
+    User = 2621,
     /// 核销码
     WriteOffCode = 3473,
     /// 用户零钱
     UserPocketMoney = 3600,
+    /// 用户提现申请
+    UserWithdrawalMoney = 3111,
     /// 用户交易记录
     UserTranRecord = 6355,
     /// 邀请销售码
@@ -50,6 +54,11 @@ pub const WECHAT_PAY_MCH_ID: &str = "15xxxx";
 // pub const WECHAT_PAY_APIV2: &str = "xfahDJfLkxxxx";
 pub const WECHAT_PAY_APIV3: &str = "ZwAklzmcTDfxxxx";
 pub const WECHAT_PAY_SERIAL: &str = "4BF9AECC834xxxx";
+pub const WECHAT_PAY_PUBKEY: &str = "-----BEGIN PUBLIC KEY-----
+MIIBIjAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xM3ezMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ZQIDAQAB
+-----END PUBLIC KEY-----";
 
 /// 微信支付 v3 密钥
 pub const WECHAT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----

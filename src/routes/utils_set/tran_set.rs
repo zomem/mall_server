@@ -7,6 +7,7 @@ use crate::db::my_run_tran_drop;
 use crate::routes::utils_set::hash_set::hash_user_tran;
 
 /// 新增，用户的交易记录。可以是购买，充值，提现，分成等等
+/// tran_amount 正表示收入。负表示支出
 pub fn add_tran_record(
     tran: &mut Transaction,
     tran_type: TranType,

@@ -8,10 +8,11 @@ use wx_pay::{Amount, Jsapi, Payer, WxPayData};
 use crate::common::UNIT_START_SN;
 use crate::common::types::{
     DeliveryType, OrderItemStatus, OrderPayStatus, PayType, ShopCartStatus, TranType,
+    WriteOffStatus,
 };
 use crate::control::app_data::AppData;
 use crate::control::wx_info::wx_pay_init;
-use crate::db::{my_run_vec, mysql_conn};
+use crate::db::{my_run_tran_vec, my_run_vec, mysql_conn};
 use crate::middleware::AuthUser;
 use crate::routes::Res;
 use crate::routes::utils_set::mall_set::*;
@@ -214,7 +215,7 @@ pub struct WxPayInfo {
     pay_sign: String,
     package: String,
     nonce_str: String,
-    time_stamp: i64,
+    time_stamp: String,
 }
 /// 客户端发起支付返回的参数信息
 #[derive(Serialize, Debug, Deserialize, ToSchema, Clone)]
@@ -339,7 +340,7 @@ pub async fn mall_order_make_pay(
         pay_sign: String::new(),
         package: String::new(),
         nonce_str: String::new(),
-        time_stamp: 0,
+        time_stamp: String::new(),
     };
     // 如果是零钱支付，则进行零钱支付操作
     match pay_type {
@@ -353,6 +354,7 @@ pub async fn mall_order_make_pay(
             if prepare.pay_amount < 0. {
                 return Err(error::ErrorBadRequest("购买金额错误"));
             }
+            // 零钱增减，同时有交易记录添加
             match pocket_money_sub(
                 &mut tran,
                 uid,
@@ -376,7 +378,7 @@ pub async fn mall_order_make_pay(
                 }
             };
             // 修改订单状态 为 已支付
-            match upd_order_status(&mut tran, &order_sn, OrderPayStatus::Paid, None) {
+            match upd_order_status(&mut tran, &order_sn, OrderPayStatus::Paid, None, None) {
                 Ok(d) => d,
                 Err(e) => {
                     tran.rollback().unwrap();
@@ -500,7 +502,7 @@ pub struct OrderDeliveryType {
 #[utoipa::path(
     responses((status = 200, description = "【返回：UserOrder[]】", body = Vec<UserOrder>)),
     params(
-        ("status", description="-1 全部，0 待发货，1 待收货, 2 已完成，3 已评价，4 申请退货，5 已退货"), ("page", description="第几页"),
+        ("status", description="【商品状态】：-1 全部，0 待发货，1 待收货, 2 已完成，3 已评价，4 申请退货，5 已退货。【核销状态】：-1 全部，0 待核销, 2 已完成，3 已评价，4 申请退货，5 已退货"), ("page", description="第几页"),
         OrderDeliveryType
     )
 )]
@@ -950,12 +952,14 @@ pub async fn mall_order_detail(
 
 #[derive(Serialize, Debug, Deserialize, ToSchema, Clone)]
 pub struct ModifyOder {
-    /// 子订单id
-    order_item_id: String,
-    /// 2 确认收货  4 申请退货
-    status: OrderItemStatus,
+    /// 订单号
+    order_sn: String,
+    ///  4 申请退款
+    status: OrderPayStatus,
+    /// 退款原因
+    reason: Option<String>,
 }
-/// 【订单】修改订单状态
+/// 【订单】用户申请退款
 #[utoipa::path(
     request_body = ModifyOder,
     responses((status = 200, description = "【请求：ModifyOder】【返回：String】", body = String)),
@@ -965,41 +969,141 @@ pub async fn mall_order_modify_status(
     user: AuthUser,
     params: web::Json<ModifyOder>,
 ) -> Result<impl Responder> {
-    // 0 待发货，1 待收货, 2 已完成, 3 已评价，4 申请退货，5 已退货
     let uid = user.id;
-    if params.status != OrderItemStatus::Complete && params.status != OrderItemStatus::Apply {
-        return Err(error::ErrorBadRequest("订单状态参数错误"));
-    }
-    let mut conn = mysql_conn()?;
-    #[derive(Deserialize)]
-    struct OrderItem {
-        uid: u64,
-        order_sn: String,
-    }
-    let order_item: Vec<OrderItem> = my_run_vec(
-        &mut conn,
-        myget!("ord_order_item", { "order_item_id": &params.order_item_id }, "order_sn,uid"),
-    )?;
-    if order_item.len() == 0 {
-        return Err(error::ErrorBadRequest("订单号不存在"));
-    }
-    if order_item[0].uid != uid {
-        return Err(error::ErrorBadRequest("订单用户不对"));
+
+    // 只支持申请退款操作
+    if params.status != OrderPayStatus::Apply {
+        return Ok(web::Json(Res::fail("只支持申请退款操作")));
     }
 
-    let mut tran = conn
-        .start_transaction(TxOpts::default())
-        .map_err(|e| error::ErrorInternalServerError(log_err(&e, &params)))?;
-    match upd_order_item_status(&mut tran, &params.order_item_id, params.status.clone()) {
+    let mut conn = mysql_conn()?;
+
+    // ---- 事务开始 ----
+    let mut tran = conn.start_transaction(TxOpts::default()).unwrap();
+
+    // 验证订单是否存在且属于该用户，同时检查当前状态
+    #[derive(Deserialize)]
+    struct OrderInfo {
+        uid: u64,
+        status: i8,
+    }
+
+    let order_info: Vec<OrderInfo> = match my_run_tran_vec(
+        &mut tran,
+        myget!("ord_order", { "order_sn": &params.order_sn }, "uid,status"),
+    ) {
         Ok(d) => d,
         Err(e) => {
             tran.rollback().unwrap();
-            return Err(error::ErrorInternalServerError(e));
+            return Err(e);
         }
     };
+
+    if order_info.is_empty() {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("订单不存在")));
+    }
+
+    if order_info[0].uid != uid {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("订单不属于当前用户")));
+    }
+
+    // 检查订单当前状态，只有已支付的订单才能申请退款
+    if order_info[0].status != OrderPayStatus::Paid as i8 {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("只有已支付的订单才能申请退款")));
+    }
+
+    // 1. 修改主订单状态为申请退款
+    match upd_order_status(
+        &mut tran,
+        &params.order_sn,
+        OrderPayStatus::Apply,
+        None,
+        params.reason.clone(),
+    ) {
+        Ok(_) => {}
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    }
+
+    // 2. 查询该订单下的所有子订单项
+    #[derive(Deserialize)]
+    struct OrderItemInfo {
+        order_item_id: String,
+    }
+
+    let order_items: Vec<OrderItemInfo> = match my_run_tran_vec(
+        &mut tran,
+        myfind!("ord_order_item", {
+            p0: ["order_sn", "=", &params.order_sn],
+            p1: ["is_del", "=", 0],
+            r: "p0 && p1",
+            select: "order_item_id",
+        }),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    };
+
+    // 3. 检查核销状态（如果存在核销记录）
+    for item in &order_items {
+        // 查询是否存在核销记录
+        #[derive(Deserialize)]
+        struct WriteOffInfo {
+            write_off_status: i8,
+        }
+
+        let write_off_records: Vec<WriteOffInfo> = match my_run_tran_vec(
+            &mut tran,
+            myfind!("ord_write_off_item", {
+                p0: ["order_item_id", "=", &item.order_item_id],
+                p1: ["is_del", "=", 0],
+                r: "p0 && p1",
+                select: "write_off_status",
+            }),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                tran.rollback().unwrap();
+                return Err(e);
+            }
+        };
+
+        // 如果存在核销记录，检查核销状态
+        if !write_off_records.is_empty() {
+            let write_off_status = write_off_records[0].write_off_status;
+            // 只有待核销状态才允许申请退款
+            if write_off_status != WriteOffStatus::PendingWriteOff as i8 {
+                tran.rollback().unwrap();
+                return Ok(web::Json(Res::fail(
+                    "该订单包含已核销或其他状态的商品，不允许申请退款",
+                )));
+            }
+        }
+    }
+
+    // 4. 修改所有子订单项状态为申请退货
+    for item in &order_items {
+        match upd_order_item_status(&mut tran, &item.order_item_id, OrderItemStatus::Apply) {
+            Ok(_) => {}
+            Err(e) => {
+                tran.rollback().unwrap();
+                return Err(e);
+            }
+        }
+    }
+
+    // 提交事务
     tran.commit().unwrap();
 
-    Ok(web::Json(Res::success("")))
+    Ok(web::Json(Res::success("申请退款成功，等待管理员处理")))
 }
 
 #[cfg(test)]

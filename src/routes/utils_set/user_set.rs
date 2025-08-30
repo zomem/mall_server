@@ -5,6 +5,7 @@ use serde::Deserialize;
 use crate::common::JWT_NORMAL_EXPIRES_SEC;
 use crate::db::my_run_drop;
 use crate::middleware::AuthUser;
+use crate::routes::utils_set::hash_set::hash_user;
 use crate::routes::utils_set::pocket_set::init_user_pocket_money;
 use crate::utils::files::get_file_url_sec;
 use crate::utils::jwt::get_token;
@@ -62,7 +63,7 @@ pub fn user_set_with_union_open(
     }
 
     // 获取最新用户信息
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Clone)]
     struct UserInfoGet {
         id: u64,
         username: String,
@@ -70,15 +71,33 @@ pub fn user_set_with_union_open(
         avatar_url: Option<String>,
         gender: u8,
         role: String,
+        hash: Option<String>,
     }
     let user_get: Vec<UserInfoGet> = my_run_vec(
         &mut conn,
         myget!(
             "usr_silent",
             {"openid": &openid},
-            "id,username,nickname,avatar_url,gender,role"
+            "id,username,nickname,avatar_url,gender,role,hash"
         ),
     )?;
+    if let Some(h) = user_get[0].clone().hash {
+        if h.is_empty() {
+            // 添加用户hash
+            let hash = hash_user(user_get[0].id, &openid)?;
+            my_run_drop(
+                &mut conn,
+                myupdate!("usr_silent", {"openid": &openid}, {"hash": hash}),
+            )?;
+        }
+    } else {
+        // 添加用户hash
+        let hash = hash_user(user_get[0].id, &openid)?;
+        my_run_drop(
+            &mut conn,
+            myupdate!("usr_silent", {"openid": &openid}, {"hash": hash}),
+        )?;
+    }
     let token = get_token(AuthUser { id: user_get[0].id }, JWT_NORMAL_EXPIRES_SEC)?;
     let user = UserInfo {
         id: user_get[0].id,

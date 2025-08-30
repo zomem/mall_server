@@ -1,17 +1,19 @@
 use crate::common::{
     PROJECT_NAME, WECHAT_GZH_APP_ID, WECHAT_GZH_APP_SECRET, WECHAT_GZH_JS_SDK_URL,
     WECHAT_MINI_APP_ID, WECHAT_MINI_APP_SECRET, WECHAT_PAY_APIV3, WECHAT_PAY_MCH_ID,
-    WECHAT_PAY_NOTIFY_URL, WECHAT_PAY_SERIAL, WECHAT_PRIVATE_KEY,
+    WECHAT_PAY_NOTIFY_URL, WECHAT_PAY_PUBKEY, WECHAT_PAY_SERIAL, WECHAT_PRIVATE_KEY,
 };
 use crate::db::redis_conn;
 use crate::utils::random::rand_unique;
 use crate::utils::utils::log_err;
-use actix_web::{Error, error};
+use actix_web::{Error, error, web};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use sha1::Digest;
 use utoipa::ToSchema;
 use wx_pay::WxPay;
+use wx_pay::decode::{WxNotify, decode_wx_notify};
+use wx_pay::verification::WxPayVerification;
 
 /// 微信支付 初始化
 pub fn wx_pay_init<'a>() -> WxPay<'a> {
@@ -22,6 +24,8 @@ pub fn wx_pay_init<'a>() -> WxPay<'a> {
         serial_no: WECHAT_PAY_SERIAL,
         api_v3_private_key: WECHAT_PAY_APIV3,
         notify_url: WECHAT_PAY_NOTIFY_URL,
+        wx_public_key: Some(WECHAT_PAY_PUBKEY),
+        wx_public_key_id: None,
     }
 }
 
@@ -258,6 +262,49 @@ pub async fn get_wx_gzh_web_user_info(openid: &str) -> Result<WXGzhWebUserInfo, 
         .map_err(|e| error::ErrorInternalServerError(log_err(&e, "wx_info")))?;
 
     Ok(res)
+}
+
+/// 微信支付的回调数据验证和解密
+pub fn get_decode_wx_notify<T>(
+    body: web::Bytes,
+    req: actix_web::HttpRequest,
+) -> anyhow::Result<T, Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    // 1. 用原始 body 进行验签
+    let body_str = std::str::from_utf8(&body)?;
+    let verification = WxPayVerification::new(WECHAT_PAY_PUBKEY.to_string());
+    // 获取验签所需的 HTTP 头信息
+    let timestamp = req
+        .headers()
+        .get("Wechatpay-Timestamp")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let nonce = req
+        .headers()
+        .get("Wechatpay-Nonce")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let signature = req
+        .headers()
+        .get("Wechatpay-Signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if WxPayVerification::is_test_signature(signature) {
+        return Err(error::ErrorNotAcceptable("测试签名"));
+    }
+    let is_verifi_ok = verification
+        .verify_response(timestamp, nonce, body_str, signature)
+        .map_err(|e| error::ErrorInternalServerError(e))?;
+    if !is_verifi_ok {
+        return Err(error::ErrorNotAcceptable("签名验证失败"));
+    }
+    // 2. 验签成功后再解析 JSON
+    let params: WxNotify = serde_json::from_slice(&body)?;
+    let data: T = decode_wx_notify(WECHAT_PAY_APIV3, params)
+        .map_err(|e| error::ErrorInternalServerError(e))?;
+    Ok(data)
 }
 
 #[cfg(test)]

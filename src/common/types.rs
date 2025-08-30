@@ -358,8 +358,8 @@ pub enum UserCouponStatus {
     Used,
 }
 
-/// 用户订单支付状态 1 为待支付，2 为已支付，0 为取消支付
-#[derive(Serialize, Deserialize, Clone, Debug, ToSchema)]
+/// 用户订单支付状态 1 为待支付，2 为已支付，0 为取消支付  4 为申请退款  5 为已退款  6 为退款中
+#[derive(Serialize, Deserialize, Clone, Debug, ToSchema, Eq, PartialEq)]
 pub enum OrderPayStatus {
     /// 0 取消支付
     CancelPayment,
@@ -367,9 +367,17 @@ pub enum OrderPayStatus {
     PendingPayment,
     /// 2 为已支付
     Paid,
+    /// 4 为申请退款
+    Apply = 4,
+    /// 5 为已退款
+    Refund = 5,
+    /// 6 为退款中
+    Refunding = 6,
+    /// 7 为拒绝退款
+    Refuse = 7,
 }
 
-/// 用户子订单物流等状态 0 待发货，1 待收货, 2 已完成, 3 已评价，4 申请退货，5 已退货
+/// 用户子订单物流等状态 0 待发货，1 待收货, 2 已完成, 3 已评价，4 申请退货，5 已退货，6 为退款中
 #[derive(Serialize, Deserialize, Clone, Debug, ToSchema, Eq, PartialEq)]
 pub enum OrderItemStatus {
     /// 0 为待发货
@@ -383,7 +391,11 @@ pub enum OrderItemStatus {
     /// 4 为申请退货
     Apply,
     /// 5 为已退货
-    Returned,
+    Refund,
+    /// 6 为退款中
+    Refunding,
+    /// 7 为拒绝退款
+    Refuse = 7,
 }
 impl From<u8> for OrderItemStatus {
     fn from(value: u8) -> Self {
@@ -393,14 +405,14 @@ impl From<u8> for OrderItemStatus {
             2 => Self::Complete,
             3 => Self::Evaluated,
             4 => Self::Apply,
-            5 => Self::Returned,
+            5 => Self::Refund,
             _ => Self::WaitDeliverGoods,
         }
     }
 }
 
 /// 核销单子的状态，0 为取消订单，1 为待核销，2 为已核销，3 已过期
-#[derive(Serialize, Deserialize, Clone, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, ToSchema, Eq, PartialEq)]
 pub enum WriteOffStatus {
     /// 0 为取消订单
     Cancel,
@@ -410,4 +422,21 @@ pub enum WriteOffStatus {
     SuccessWriteOff,
     /// 3 已作废
     Invalidated,
+}
+
+/// 提现状态，2审核通过，1审核中，0未通过，3提现成功，4提现失败，5正在提现
+#[derive(Serialize, Deserialize, Clone, Debug, ToSchema, Eq, PartialEq)]
+pub enum WithdrawalReqStatus {
+    /// 未通过
+    Refuse,
+    /// 审核中
+    UnderReview,
+    /// 审核通过
+    Approved,
+    /// 提现成功
+    Success,
+    /// 提现失败
+    Fail,
+    /// 正在提现
+    Ing,
 }

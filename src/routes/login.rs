@@ -599,7 +599,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_gen_new_pass() {
-        let pass = "7n1gTSS0ypUPHa7jpR";
+        let pass = "7n123Ha7jpR";
         let hash_pass = hash(pass, DEFAULT_COST).unwrap();
         println!("新密码：{}", hash_pass);
     }

@@ -8,6 +8,8 @@ pub const LOG_LEVEL_STATUS: u16 = 400;
 
 /// 微信支付，回调地址
 pub const WECHAT_PAY_NOTIFY_URL: &str = "https://dev/pay/notify";
+pub const WECHAT_PAY_REFUND_NOTIFY_URL: &str = "https://xxx";
+pub const WECHAT_PAY_TRANSFER_NOTIFY_URL: &str = "https://xxx";
 /// 公众号 js sdk 域名
 pub const WECHAT_GZH_JS_SDK_URL: &str = "https://";
 

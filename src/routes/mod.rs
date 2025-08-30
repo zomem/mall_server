@@ -142,7 +142,8 @@ pub struct BaseInfo {
         article_category_list, article_content_list, article_content_detail, article_stat_praise,
         mall_write_off_info, mall_write_off_do, user_pocket_tran, user_pocket_withdraw_req,
         sales_invite_sale_code, sales_invite_sale_bind, sales_invite_sale_del, sales_invite_user_code,
-        sales_invite_user_bind, sales_invite_user_del, sales_list_sale, sales_list_user, user_pocket_money
+        sales_invite_user_bind, sales_invite_user_del, sales_list_sale, sales_list_user, user_pocket_money,
+        user_pocket_transfer, user_pocket_transfer_list, user_pocket_pending_withdraw
     ),
     components(schemas(
         UserInfo, WechatLoginMiniInfo, Res<u8>, UploadFile, QuestionFormType,
@@ -158,7 +159,8 @@ pub struct BaseInfo {
         CatProductItem, CatProduct, Brand, ProductAttr, ProductDetail, ProductFile, ProductCatItem,
         ProductGroupItem, ProductGroupAll, ProductGroup, ProductGroupSearch, EmailProductFile,
         ArticleCat, Article, ArticleDetail, ArticleId, WriteOffInfo, DoWriteOff, Invite, SaleDelUid,
-        SaleUserItem, UserTran, WithdrawRequest
+        SaleUserItem, UserTran, WithdrawRequest, WithdrawalRequestItem, WithdrawalRequestInfo,
+        UserPendingWithdraw
     ))
 )]
 /// 小程序端接口文档

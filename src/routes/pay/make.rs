@@ -13,7 +13,7 @@ use wx_pay::{
 
 use crate::common::{
     WECHAT_MINI_APP_ID, WECHAT_PAY_APIV3, WECHAT_PAY_MCH_ID, WECHAT_PAY_NOTIFY_URL,
-    WECHAT_PAY_SERIAL, WECHAT_PRIVATE_KEY,
+    WECHAT_PAY_PUBKEY, WECHAT_PAY_SERIAL, WECHAT_PRIVATE_KEY,
 };
 use crate::control::app_data::{AppData, SlownWorker};
 use crate::db::mysql_conn;
@@ -56,6 +56,8 @@ pub async fn pay_make_wx_test(
                 serial_no: WECHAT_PAY_SERIAL,
                 api_v3_private_key: WECHAT_PAY_APIV3,
                 notify_url: WECHAT_PAY_NOTIFY_URL,
+                wx_public_key: Some(WECHAT_PAY_PUBKEY),
+                wx_public_key_id: None,
             };
 
             let data = wx_pay
@@ -84,6 +86,6 @@ pub async fn pay_make_wx_test(
         pay_sign: "".into(),
         package: "".into(),
         nonce_str: "".into(),
-        time_stamp: 3,
+        time_stamp: "".into(),
     })))
 }

@@ -2,16 +2,21 @@ use actix_web::{Responder, Result, get, post, web};
 use mysql_quick::{MysqlQuickCount, TxOpts, mycount, myfind, myget, mysetmany};
 use serde::{Deserialize, Serialize};
 
-use crate::common::types::{DeliveryType, OrderItemStatus};
+use crate::common::WECHAT_PAY_REFUND_NOTIFY_URL;
+use crate::common::types::{DeliveryType, OrderItemStatus, OrderPayStatus};
 use crate::control::app_data::{AppData, SlownWorker};
+use crate::control::wx_info::wx_pay_init;
 use crate::routes::Res;
-use crate::routes::utils_set::mall_set::{OrderChange, OrderChangeItems, upd_order_item_status};
+use crate::routes::utils_set::mall_set::{
+    OrderChange, OrderChangeItems, upd_order_item_status, upd_order_status,
+};
 use crate::utils::files::get_file_url;
 use crate::{PageData, UnitAttrInfo};
 use crate::{
     db::{my_run_tran_drop, my_run_tran_vec, my_run_vec, mysql_conn},
     middleware::AuthMana,
 };
+use wx_pay::{Refund, RefundAmount};
 
 #[derive(Serialize, Deserialize, Clone)]
 struct OrderRes {
@@ -32,6 +37,8 @@ struct OrderRes {
     addr_detail: Option<String>,
     contact_user: Option<String>,
     contact_phone: Option<String>,
+    transaction_id: Option<String>,
+    reason: Option<String>,
     status: i8,
     created_at: String,
     delivery_type: DeliveryType,
@@ -80,6 +87,8 @@ pub async fn manage_mall_order_list(
         addr_detail: Option<String>,
         contact_user: Option<String>,
         contact_phone: Option<String>,
+        transaction_id: Option<String>,
+        reason: Option<String>,
         status: i8,
         created_at: String,
         delivery_type: String,
@@ -98,7 +107,8 @@ pub async fn manage_mall_order_list(
             order_by: "-created_at",
             select: "
                 id,uid,usr_silent.nickname,order_sn,total_amount,reduce_amount,reduce_des,pay_amount,notes,appointment_time,
-                total_quantity,province,city,area,addr_detail,contact_user,contact_phone,status,created_at,delivery_type
+                total_quantity,province,city,area,addr_detail,contact_user,contact_phone,status,created_at,delivery_type,
+                transaction_id,reason
                 ",
         }),
     )?;
@@ -128,6 +138,8 @@ pub async fn manage_mall_order_list(
             area: x.area,
             addr_detail: x.addr_detail,
             contact_user: x.contact_user,
+            transaction_id: x.transaction_id,
+            reason: x.reason,
             contact_phone: x.contact_phone,
             delivery_type: x.delivery_type.into(),
         })
@@ -457,4 +469,283 @@ pub async fn manage_mall_order_do_delivery_start(
     tran.commit().unwrap();
 
     Ok(web::Json(Res::success("")))
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct RefundParams {
+    /// 订单号
+    order_sn: String,
+}
+/// 管理端退款接口 - 按主订单退款
+#[post("/manage/mall/order/refund")]
+pub async fn manage_mall_order_refund(
+    _user: AuthMana,
+    params: web::Json<RefundParams>,
+    app_data: web::Data<AppData>,
+) -> Result<impl Responder> {
+    let data = &app_data;
+    let mut conn = mysql_conn()?;
+
+    // ---- 事务开始 ----
+    let mut tran = conn.start_transaction(TxOpts::default()).unwrap();
+
+    // 获取主订单信息
+    #[derive(Serialize, Deserialize, Clone)]
+    struct OrderInfo {
+        order_sn: String,
+        pay_amount: String,
+        status: i8,
+        transaction_id: Option<String>,
+        /// 退款原因
+        reason: Option<String>,
+    }
+
+    let orders: Vec<OrderInfo> = match my_run_tran_vec(
+        &mut tran,
+        myget!("ord_order", { "order_sn": &params.order_sn }, "order_sn,pay_amount,status,transaction_id,reason"),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    };
+
+    if orders.is_empty() {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("未找到订单")));
+    }
+
+    let order = &orders[0];
+
+    // 检查订单状态是否为申请退款状态
+    if order.status != OrderPayStatus::Apply as i8 {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail(
+            "订单状态不允许退款，必须为申请退款状态",
+        )));
+    }
+
+    if order.transaction_id.is_none() {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("订单未支付或交易号缺失")));
+    }
+
+    let refund_amount = order.pay_amount.parse::<f64>().unwrap();
+
+    if refund_amount == 0. {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("订单支付金额为0.")));
+    }
+
+    // 1. 修改主订单状态为退款中
+    match upd_order_status(
+        &mut tran,
+        &params.order_sn,
+        OrderPayStatus::Refunding,
+        None,
+        None,
+    ) {
+        Ok(_) => {}
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    }
+
+    // 2. 查询该订单下的所有子订单项并修改状态为退款中
+    #[derive(Serialize, Deserialize, Clone)]
+    struct OrderItemInfo {
+        order_item_id: String,
+    }
+
+    let order_items: Vec<OrderItemInfo> = match my_run_tran_vec(
+        &mut tran,
+        myfind!("ord_order_item", {
+            p0: ["order_sn", "=", &params.order_sn],
+            p1: ["is_del", "=", 0],
+            r: "p0 && p1",
+            select: "order_item_id",
+        }),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    };
+
+    // 修改所有子订单项状态为退款中
+    for item in &order_items {
+        match upd_order_item_status(&mut tran, &item.order_item_id, OrderItemStatus::Refunding) {
+            Ok(_) => {}
+            Err(e) => {
+                tran.rollback().unwrap();
+                return Err(e);
+            }
+        }
+    }
+
+    // 3. 初始化微信支付
+    let wx_pay = wx_pay_init();
+
+    // 4. 构建退款请求
+    let out_refund_no = data.rand_no(SlownWorker::OutTradeNo); // 生成退款单号
+    let refund_request = Refund {
+        transaction_id: order.transaction_id.clone(),
+        out_trade_no: None,
+        out_refund_no: out_refund_no.clone(),
+        reason: order.reason.clone(),
+        notify_url: Some(WECHAT_PAY_REFUND_NOTIFY_URL.to_string()),
+        funds_account: None,
+        amount: RefundAmount {
+            refund: (refund_amount * 100.0) as u64, // 转换为分
+            total: (refund_amount * 100.0) as u64,  // 原订单金额
+            currency: "CNY".to_string(),
+            from: None,
+            payer_total: None,
+            payer_refund: None,
+            settlement_refund: None,
+            settlement_total: None,
+            discount_refund: None,
+            refund_fee: None,
+        },
+        goods_detail: None,
+    };
+
+    // 5. 调用微信退款接口
+    let _refund_result = match wx_pay.refund(&refund_request).await {
+        Ok(result) => result,
+        Err(e) => {
+            // 退款失败，恢复订单状态
+            let _ = upd_order_status(
+                &mut tran,
+                &params.order_sn,
+                OrderPayStatus::Apply,
+                None,
+                None,
+            );
+            // 恢复所有子订单项状态
+            for item in &order_items {
+                let _ =
+                    upd_order_item_status(&mut tran, &item.order_item_id, OrderItemStatus::Apply);
+            }
+            tran.rollback().unwrap();
+            return Ok(web::Json(Res::fail(&format!("退款失败: {}", e))));
+        }
+    };
+
+    // 提交事务
+    tran.commit().unwrap();
+
+    Ok(web::Json(Res::success(format!(
+        "退款申请提交成功，退款单号: {}",
+        out_refund_no
+    ))))
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct RefuseRefundParams {
+    /// 订单号
+    order_sn: String,
+    /// 拒绝原因
+    reason: Option<String>,
+}
+
+/// 管理端拒绝退款接口
+#[post("/manage/mall/order/refuse_refund")]
+pub async fn manage_mall_order_refuse_refund(
+    _user: AuthMana,
+    params: web::Json<RefuseRefundParams>,
+) -> Result<impl Responder> {
+    let mut conn = mysql_conn()?;
+
+    // ---- 事务开始 ----
+    let mut tran = conn.start_transaction(TxOpts::default()).unwrap();
+
+    // 获取主订单信息
+    #[derive(Serialize, Deserialize, Clone)]
+    struct OrderInfo {
+        order_sn: String,
+        status: i8,
+    }
+
+    let orders: Vec<OrderInfo> = match my_run_tran_vec(
+        &mut tran,
+        myget!("ord_order", { "order_sn": &params.order_sn }, "order_sn,status"),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    };
+
+    if orders.is_empty() {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail("未找到订单")));
+    }
+
+    let order = &orders[0];
+
+    // 检查订单状态是否为申请退款状态
+    if order.status != OrderPayStatus::Apply as i8 {
+        tran.rollback().unwrap();
+        return Ok(web::Json(Res::fail(
+            "订单状态不允许拒绝退款，必须为申请退款状态",
+        )));
+    }
+
+    // 1. 修改主订单状态为拒绝退款
+    match upd_order_status(
+        &mut tran,
+        &params.order_sn,
+        OrderPayStatus::Refuse,
+        None,
+        params.reason.clone(),
+    ) {
+        Ok(_) => {}
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    }
+
+    // 2. 查询该订单下的所有子订单项
+    #[derive(Serialize, Deserialize, Clone)]
+    struct OrderItemInfo {
+        order_item_id: String,
+    }
+
+    let order_items: Vec<OrderItemInfo> = match my_run_tran_vec(
+        &mut tran,
+        myfind!("ord_order_item", {
+            p0: ["order_sn", "=", &params.order_sn],
+            p1: ["is_del", "=", 0],
+            r: "p0 && p1",
+            select: "order_item_id",
+        }),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            tran.rollback().unwrap();
+            return Err(e);
+        }
+    };
+
+    // 3. 修改所有子订单项状态为拒绝退款
+    for item in &order_items {
+        match upd_order_item_status(&mut tran, &item.order_item_id, OrderItemStatus::Refuse) {
+            Ok(_) => {}
+            Err(e) => {
+                tran.rollback().unwrap();
+                return Err(e);
+            }
+        }
+    }
+
+    // 提交事务
+    tran.commit().unwrap();
+
+    Ok(web::Json(Res::success("拒绝退款成功")))
 }

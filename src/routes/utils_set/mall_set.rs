@@ -685,18 +685,35 @@ pub fn calc_user_coupon_data(
     Ok(reduce_info)
 }
 
-/// 修改主订单的支付状态：2 已支付，1 待支付，0 取消支付,
+/// 修改主订单的支付状态：2 已支付，1 待支付，0 取消支付,  4 为申请退款  5 为已退款  6 为退款中
 pub fn upd_order_status(
     tran: &mut Transaction,
-    order_sn: &String,
+    order_sn: &str,
     status: OrderPayStatus,
     tran_id: Option<String>,
+    reason: Option<String>,
 ) -> Result<(), Error> {
     my_run_tran_drop(
         tran,
         myupdate!("ord_order", {"order_sn": order_sn}, {
             "status": status as u8,
             "transaction_id": &tran_id,
+            "reason": &reason,
+        }),
+    )?;
+    Ok(())
+}
+
+/// 修改核销订单状态：0 为取消订单 ，1 为待核销，2 为已核销，3 已过期
+pub fn upd_order_item_write_off_status(
+    tran: &mut Transaction,
+    order_item_id: &str,
+    status: WriteOffStatus,
+) -> Result<(), Error> {
+    my_run_tran_drop(
+        tran,
+        myupdate!("ord_write_off_item", {"order_item_id": order_item_id}, {
+            "write_off_status": status as u8
         }),
     )?;
     Ok(())
@@ -754,7 +771,7 @@ pub struct OrderChange {
     pub order_items: Vec<OrderChangeItems>,
 }
 /// 修改子订单的物流状态
-/// 0 待发货，1 待收货, 2 已完成, 3 已评价，4 申请退货，5 已退货
+/// 0 待发货，1 待收货, 2 已完成, 3 已评价，4 申请退货，5 已退货, 6 退款中
 pub fn upd_order_item_status(
     tran: &mut Transaction,
     order_item_id: &str,
@@ -765,7 +782,10 @@ pub fn upd_order_item_status(
         myupdate!("ord_order_item", { "order_item_id": order_item_id }, {"status": status.clone() as u8}),
     )?;
 
-    if status == OrderItemStatus::Apply || status == OrderItemStatus::Returned {
+    if status == OrderItemStatus::Apply
+        || status == OrderItemStatus::Refund
+        || status == OrderItemStatus::Refunding
+    {
         // 如果是，待核销的商品，，如果是退货状态，则也要修改状态
         my_run_tran_drop(
             tran,
